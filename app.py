@@ -6,10 +6,8 @@ from io import BytesIO
 import os
 
 st.set_page_config(page_title="Checklist Fiscalização", page_icon="✅")
-
 st.title("📋 Checklist de Fiscalização")
 
-# Nome do arquivo Excel
 arquivo_excel = "checklists.xlsx"
 
 # Perguntas do checklist
@@ -27,11 +25,15 @@ perguntas = [
     "Atividade tem início conforme programado?"
 ]
 
-# Coleta de respostas via formulário Streamlit
+# Inicializa a lista de checklists na sessão
+if "respostas_todas" not in st.session_state:
+    st.session_state.respostas_todas = []
+
+# Formulário para preencher o checklist
 with st.form("checklist_form"):
     st.subheader("Preencha o checklist:")
     respostas = [st.text_input(pergunta) for pergunta in perguntas]
-    enviado = st.form_submit_button("Salvar no Excel")
+    enviado = st.form_submit_button("Salvar")
 
 def formatar_planilha(ws):
     ws.column_dimensions["A"].width = 40
@@ -54,38 +56,38 @@ def formatar_planilha(ws):
         for cell in row:
             cell.border = thin_border
 
-# Salvar respostas no Excel
+# Quando o usuário clica em salvar
 if enviado:
-    if os.path.exists(arquivo_excel):
-        wb = openpyxl.load_workbook(arquivo_excel)
-    else:
+    st.session_state.respostas_todas.append(respostas)
+    st.success("Checklist salvo na memória! Preencha outro ou exporte todos ao final.")
+
+# Botão para exportar todos os checklists para Excel
+if st.session_state.respostas_todas:
+    if st.button("📥 Baixar todos os checklists (Excel)"):
         wb = Workbook()
-        del wb["Sheet"]
+        del wb["Sheet"]  # remove aba padrão
 
-    nome_planilha = f"{respostas[0]}_{respostas[4]}"
-    if nome_planilha in wb.sheetnames:
-        num = 1
-        while f"{nome_planilha}_{num}" in wb.sheetnames:
-            num += 1
-        nome_planilha = f"{nome_planilha}_{num}"
+        for i, respostas in enumerate(st.session_state.respostas_todas):
+            nome_aba = f"{respostas[0]}_{respostas[4]}" if respostas[0] and respostas[4] else f"Checklist_{i+1}"
+            if nome_aba in wb.sheetnames:
+                contador = 1
+                while f"{nome_aba}_{contador}" in wb.sheetnames:
+                    contador += 1
+                nome_aba = f"{nome_aba}_{contador}"
 
-    ws = wb.create_sheet(title=nome_planilha)
-    ws.append(["Pergunta", "Resposta"])
-    for pergunta, resposta in zip(perguntas, respostas):
-        ws.append([pergunta, resposta])
+            ws = wb.create_sheet(title=nome_aba)
+            ws.append(["Pergunta", "Resposta"])
+            for pergunta, resposta in zip(perguntas, respostas):
+                ws.append([pergunta, resposta])
+            formatar_planilha(ws)
 
-    formatar_planilha(ws)
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
 
-    # Salvar em memória para download
-    excel_bytes = BytesIO()
-    wb.save(excel_bytes)
-    excel_bytes.seek(0)
-
-    st.success(f"Checklist salvo com sucesso na planilha '{nome_planilha}'!")
-
-    st.download_button(
-        label="📥 Baixar Excel atualizado",
-        data=excel_bytes,
-        file_name=arquivo_excel,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        st.download_button(
+            label="📥 Clique aqui para baixar",
+            data=buffer,
+            file_name="checklists.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
